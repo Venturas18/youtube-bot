@@ -1,0 +1,12 @@
+aiogram==3.5.0
+google-api-python-client>=2.100.0
+python-dotenv>=1.0.0
+httpx>=0.25.0
+pytrends>=4.9.0
+matplotlib>=3.8.0
+openpyxl>=3.1.0
+numpy>=1.24.0
+googleapis-common-protos>=1.60.0
+protobuf>=4.25.0
+requests>=2.31.0
+pandas>=2.0.0
