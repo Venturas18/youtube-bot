@@ -199,10 +199,11 @@ async def process_get_all_titles(message: types.Message, state: FSMContext):
     
     input_file = BufferedInputFile(file_buffer.getvalue(), filename=file_name)
     
-    await msg.delete()
+await msg.delete()
     await message.answer_document(
         input_file, 
-        caption=f"✅ Готово! Собрано названий: <b>{count}</b>"
+        caption=f"✅ Готово! Собрано названий: <b>{count}</b>",
+        parse_mode="HTML" 
     )
     await state.clear()
 
@@ -656,4 +657,5 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
