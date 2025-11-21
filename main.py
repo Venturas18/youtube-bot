@@ -23,13 +23,11 @@ import numpy as np
 
 logging.basicConfig(level=logging.INFO)
 
-# 🤖 Инициализация
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
 youtube_analyzer = YouTubeAnalyzer()
 
 
-# 📝 Определяем состояния для FSM
 class UserStates(StatesGroup):
     waiting_for_video_link = State()
     waiting_for_channel_link = State()
@@ -38,8 +36,6 @@ class UserStates(StatesGroup):
     niche_analysis = State()
     waiting_for_all_titles_link = State() # 👈 НОВОЕ СОСТОЯНИЕ
 
-
-# 🎛️ Функция для создания клавиатуры главного меню
 def get_main_keyboard():
     buttons = [
         [types.InlineKeyboardButton(text="🎥 Аналитика видео", callback_data="analyze_video")],
@@ -55,7 +51,6 @@ def get_main_keyboard():
     return keyboard
 
 
-# 🎛️ Клавиатура для режима EXCEL
 def get_niche_analysis_keyboard():
     buttons = [
         [KeyboardButton(text="💾 Готово и Скачать")]
@@ -83,7 +78,6 @@ def format_number(num_str: str) -> str:
         return str(num_str)
 
 
-# --- 🟢 ОБРАБОТЧИКИ КОМАНД И МЕНЮ ---
 
 @dp.message(Command("start"))
 async def command_start_handler(message: types.Message, state: FSMContext):
@@ -644,23 +638,22 @@ async def start_web_server():
     logging.info(f"🌐 Fake web server started on port {port}")
 
 
-# --- 🚀 ГЛАВНАЯ ФУНКЦИЯ ---
+
 
 async def main():
     """
     Запуск бота в режиме Polling + Веб-сервер для Render.
     """
     logging.info("🚀 Бот запущен в режиме Polling")
-    
-    # 1. Сначала запускаем веб-сервер, чтобы Render увидел открытый порт
+
     await start_web_server()
     
-    # 2. Удаляем вебхуки (на всякий случай)
+
     await bot.delete_webhook(drop_pending_updates=True)
-    
-    # 3. Запускаем поллинг
+
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 
 if __name__ == "__main__":
     asyncio.run(main())
+
