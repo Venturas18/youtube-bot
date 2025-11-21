@@ -1,9 +1,11 @@
-# main.py
+
 
 import logging
 import html
 import io
 import os
+import asyncio 
+from aiohttp import web  
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -19,16 +21,14 @@ from datetime import datetime
 import httpx
 import numpy as np
 
-# Настраиваем логирование
 logging.basicConfig(level=logging.INFO)
 
-# 🤖 Инициализация
+
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
 youtube_analyzer = YouTubeAnalyzer()
 
 
-# 📝 Определяем состояния для FSM
 class UserStates(StatesGroup):
     waiting_for_video_link = State()
     waiting_for_channel_link = State()
@@ -37,7 +37,6 @@ class UserStates(StatesGroup):
     niche_analysis = State()
 
 
-# 🎛️ Функция для создания клавиатуры главного меню
 def get_main_keyboard():
     buttons = [
         [types.InlineKeyboardButton(text="🎥 Аналитика видео", callback_data="analyze_video")],
@@ -51,7 +50,7 @@ def get_main_keyboard():
     return keyboard
 
 
-# 🎛️ Клавиатура для режима EXCEL
+
 def get_niche_analysis_keyboard():
     buttons = [
         [KeyboardButton(text="💾 Готово и Скачать")]
@@ -79,7 +78,6 @@ def format_number(num_str: str) -> str:
         return str(num_str)
 
 
-# --- 🟢 ОБРАБОТЧИКИ КОМАНД И МЕНЮ ---
 
 @dp.message(Command("start"))
 async def command_start_handler(message: types.Message, state: FSMContext):
@@ -119,7 +117,6 @@ async def command_cancel_handler(message: types.Message, state: FSMContext):
     await msg_to_delete.delete()
 
 
-# --- Обработчики команд ---
 
 @dp.message(Command("analyze_video"))
 async def command_analyze_video(message: types.Message, state: FSMContext):
@@ -153,7 +150,7 @@ async def analyze_channel_callback_handler(callback_query: types.CallbackQuery, 
     await callback_query.answer()
 
 
-# --- 📈 GOOGLE TRENDS ---
+
 
 @dp.message(Command("google_trends"))
 async def command_google_trends_handler(message: types.Message, state: FSMContext):
@@ -191,7 +188,7 @@ async def process_trends_query(message: types.Message, state: FSMContext):
     await state.clear()
 
 
-# --- 📊 EXCEL АНАЛИЗ НИШИ ---
+
 
 @dp.message(Command("excel"))
 async def start_excel_analysis_command(message: types.Message, state: FSMContext):
@@ -305,7 +302,6 @@ async def process_niche_channel_input(message: types.Message, state: FSMContext)
     await msg.edit_text(response_text, parse_mode="HTML")
 
 
-# --- 🔎 ОСНОВНЫЕ ФУНКЦИИ АНАЛИЗА ---
 
 async def get_country_info(code: str) -> str:
     if code == 'N/A':
@@ -437,7 +433,7 @@ async def run_channel_analysis(message: types.Message, channel_input: str, state
     await state.clear()
 
 
-# --- 🔎 ОБРАБОТЧИКИ СОСТОЯНИЙ ---
+
 
 @dp.message(UserStates.waiting_for_video_link)
 async def process_video_link(message: types.Message, state: FSMContext):
@@ -464,7 +460,6 @@ async def auto_detect_link_handler(message: types.Message, state: FSMContext):
     await message.answer("Я не распознал ссылку. Попробуйте еще раз или используйте команду.")
 
 
-# --- 📤 ОБРАБОТЧИКИ КНОПОК СКАЧИВАНИЯ ---
 
 @dp.callback_query(F.data.startswith("download_meta:"))
 async def download_metadata_handler(callback_query: types.CallbackQuery):
@@ -562,16 +557,45 @@ async def download_heatmap_handler(callback_query: types.CallbackQuery):
     )
 
 
-# --- 🚀 ГЛАВНАЯ ФУНКЦИЯ ---
+
+
+async def health_check(request):
+    """Простой ответ 'OK' для проверки здоровья сервиса"""
+    return web.Response(text="Bot is alive!")
+
+async def start_web_server():
+    """Запускает маленький веб-сервер на порту из окружения"""
+    # Render передает порт через переменную окружения PORT
+    port = int(os.getenv("PORT", 8000))
+    
+    app = web.Application()
+    app.router.add_get('/', health_check)
+    app.router.add_get('/health', health_check)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    logging.info(f"🌐 Fake web server started on port {port}")
+
+
+
 
 async def main():
     """
-    Запуск бота в режиме Polling.
+    Запуск бота в режиме Polling + Веб-сервер для Render.
     """
     logging.info("🚀 Бот запущен в режиме Polling")
+    
+    # 1. Сначала запускаем веб-сервер, чтобы Render увидел открытый порт
+    await start_web_server()
+    
+    # 2. Удаляем вебхуки (на всякий случай)
+    await bot.delete_webhook(drop_pending_updates=True)
+    
+    # 3. Запускаем поллинг
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
