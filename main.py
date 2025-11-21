@@ -41,6 +41,7 @@ def get_main_keyboard():
     buttons = [
         [types.InlineKeyboardButton(text="🎥 Аналитика видео", callback_data="analyze_video")],
         [types.InlineKeyboardButton(text="🔗 Аналитика канала", callback_data="analyze_channel")],
+        [types.InlineKeyboardButton(text="📑 Все названия видео", callback_data="get_all_titles")],
         [
             types.InlineKeyboardButton(text="📈 Google Trends", callback_data="cmd_trends"),
             types.InlineKeyboardButton(text="📊 Анализ ниши (Excel)", callback_data="cmd_excel")
@@ -599,3 +600,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
