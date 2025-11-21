@@ -1,4 +1,4 @@
-
+# main.py
 
 import logging
 import html
@@ -23,24 +23,28 @@ import numpy as np
 
 logging.basicConfig(level=logging.INFO)
 
-
+# 🤖 Инициализация
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
 youtube_analyzer = YouTubeAnalyzer()
 
 
+# 📝 Определяем состояния для FSM
 class UserStates(StatesGroup):
     waiting_for_video_link = State()
     waiting_for_channel_link = State()
     waiting_for_trends_query = State()
     waiting_for_niche_name = State()
     niche_analysis = State()
+    waiting_for_all_titles_link = State() # 👈 НОВОЕ СОСТОЯНИЕ
 
 
+# 🎛️ Функция для создания клавиатуры главного меню
 def get_main_keyboard():
     buttons = [
         [types.InlineKeyboardButton(text="🎥 Аналитика видео", callback_data="analyze_video")],
         [types.InlineKeyboardButton(text="🔗 Аналитика канала", callback_data="analyze_channel")],
+        # 👇 НОВАЯ КНОПКА 👇
         [types.InlineKeyboardButton(text="📑 Все названия видео", callback_data="get_all_titles")],
         [
             types.InlineKeyboardButton(text="📈 Google Trends", callback_data="cmd_trends"),
@@ -51,7 +55,7 @@ def get_main_keyboard():
     return keyboard
 
 
-
+# 🎛️ Клавиатура для режима EXCEL
 def get_niche_analysis_keyboard():
     buttons = [
         [KeyboardButton(text="💾 Готово и Скачать")]
@@ -79,6 +83,7 @@ def format_number(num_str: str) -> str:
         return str(num_str)
 
 
+# --- 🟢 ОБРАБОТЧИКИ КОМАНД И МЕНЮ ---
 
 @dp.message(Command("start"))
 async def command_start_handler(message: types.Message, state: FSMContext):
@@ -89,6 +94,7 @@ async def command_start_handler(message: types.Message, state: FSMContext):
         "<blockquote><b>👇Ниже список моих команд</b></blockquote>\n"
         "<code>/analyze_video</code> — (анализ видео)\n"
         "<code>/analyze_channel</code> — (анализ канала)\n"
+        "<code>/get_titles</code> — (все названия)\n"
         "<code>/google_trends</code> — (тренд-запросы)\n"
         "<code>/excel</code> — (сбор в Excel)\n"
         "<code>/cancel</code> — (отмена)\n\n"
@@ -118,6 +124,7 @@ async def command_cancel_handler(message: types.Message, state: FSMContext):
     await msg_to_delete.delete()
 
 
+# --- Обработчики команд ---
 
 @dp.message(Command("analyze_video"))
 async def command_analyze_video(message: types.Message, state: FSMContext):
@@ -151,7 +158,62 @@ async def analyze_channel_callback_handler(callback_query: types.CallbackQuery, 
     await callback_query.answer()
 
 
+# --- 📑 СБОР ВСЕХ НАЗВАНИЙ (НОВЫЙ ФУНКЦИОНАЛ) ---
 
+@dp.message(Command("get_titles"))
+async def command_get_titles(message: types.Message, state: FSMContext):
+    await message.answer("🔗 <b>Отправьте ссылку на канал для выгрузки ВСЕХ названий видео:</b>", parse_mode="HTML")
+    await state.set_state(UserStates.waiting_for_all_titles_link)
+
+
+@dp.callback_query(F.data == "get_all_titles")
+async def callback_get_titles(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.message.answer("🔗 <b>Отправьте ссылку на канал для выгрузки ВСЕХ названий видео:</b>", parse_mode="HTML")
+    await state.set_state(UserStates.waiting_for_all_titles_link)
+    await callback_query.answer()
+
+
+@dp.message(UserStates.waiting_for_all_titles_link)
+async def process_get_all_titles(message: types.Message, state: FSMContext):
+    channel_input = message.text
+    msg = await message.answer("⏳ Начинаю сбор всех названий... Это может занять время (зависит от кол-ва видео).")
+    
+    # Вызываем новую функцию
+    result = await youtube_analyzer.get_all_video_titles(channel_input)
+    
+    if result.get("error"):
+        await msg.edit_text(f"❌ Ошибка: {result['error']}")
+        # Не сбрасываем состояние сразу, вдруг юзер ошибся ссылкой
+        return
+
+    titles = result['titles']
+    count = len(titles)
+    
+    if count == 0:
+        await msg.edit_text("На канале не найдено видео.")
+        await state.clear()
+        return
+
+    # Формируем текст файла
+    file_text = f"Список видео канала (Всего: {count})\n\n" + "\n".join(titles)
+    
+    # Создаем файл в памяти
+    file_buffer = io.BytesIO(file_text.encode('utf-8'))
+    # Используем безопасное имя файла
+    safe_name = result.get('channel_title', 'channel').replace(' ', '_')
+    file_name = f"titles_{safe_name}.txt"
+    
+    input_file = BufferedInputFile(file_buffer.getvalue(), filename=file_name)
+    
+    await msg.delete()
+    await message.answer_document(
+        input_file, 
+        caption=f"✅ Готово! Собрано названий: <b>{count}</b>"
+    )
+    await state.clear()
+
+
+# --- 📈 GOOGLE TRENDS ---
 
 @dp.message(Command("google_trends"))
 async def command_google_trends_handler(message: types.Message, state: FSMContext):
@@ -189,7 +251,7 @@ async def process_trends_query(message: types.Message, state: FSMContext):
     await state.clear()
 
 
-
+# --- 📊 EXCEL АНАЛИЗ НИШИ ---
 
 @dp.message(Command("excel"))
 async def start_excel_analysis_command(message: types.Message, state: FSMContext):
@@ -303,6 +365,7 @@ async def process_niche_channel_input(message: types.Message, state: FSMContext)
     await msg.edit_text(response_text, parse_mode="HTML")
 
 
+# --- 🔎 ОСНОВНЫЕ ФУНКЦИИ АНАЛИЗА ---
 
 async def get_country_info(code: str) -> str:
     if code == 'N/A':
@@ -434,7 +497,7 @@ async def run_channel_analysis(message: types.Message, channel_input: str, state
     await state.clear()
 
 
-
+# --- 🔎 ОБРАБОТЧИКИ СОСТОЯНИЙ ---
 
 @dp.message(UserStates.waiting_for_video_link)
 async def process_video_link(message: types.Message, state: FSMContext):
@@ -461,6 +524,7 @@ async def auto_detect_link_handler(message: types.Message, state: FSMContext):
     await message.answer("Я не распознал ссылку. Попробуйте еще раз или используйте команду.")
 
 
+# --- 📤 ОБРАБОТЧИКИ КНОПОК СКАЧИВАНИЯ ---
 
 @dp.callback_query(F.data.startswith("download_meta:"))
 async def download_metadata_handler(callback_query: types.CallbackQuery):
@@ -558,7 +622,7 @@ async def download_heatmap_handler(callback_query: types.CallbackQuery):
     )
 
 
-
+# --- 🌐 ФЕЙКОВЫЙ ВЕБ-СЕРВЕР ДЛЯ RENDER ---
 
 async def health_check(request):
     """Простой ответ 'OK' для проверки здоровья сервиса"""
@@ -580,7 +644,7 @@ async def start_web_server():
     logging.info(f"🌐 Fake web server started on port {port}")
 
 
-
+# --- 🚀 ГЛАВНАЯ ФУНКЦИЯ ---
 
 async def main():
     """
@@ -600,4 +664,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
