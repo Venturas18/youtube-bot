@@ -307,4 +307,86 @@ class YouTubeAnalyzer:
             else:
                 return "N/A"
         except Exception:
+
             return "Ошибка API"
+
+# ⭐️⭐️⭐️ НОВАЯ ФУНКЦИЯ: СБОР ВСЕХ НАЗВАНИЙ ⭐️⭐️⭐️
+    async def get_all_video_titles(self, channel_input: str) -> dict:
+        """
+        Собирает названия ВСЕХ видео с канала через пагинацию.
+        Возвращает список строк (названий).
+        """
+        # 1. Получаем ID канала
+        channel_info = self._extract_channel_info(channel_input)
+        if not channel_info:
+            return {"error": "Неверная ссылка или ID канала."}
+        
+        # Если это username или search query, нужно сначала найти ID канала
+        channel_id = None
+        if channel_info['type'] == 'id':
+            channel_id = channel_info['value']
+        else:
+            # Используем уже существующий метод для поиска ID
+            try:
+                # Здесь немного дублируем логику analyze_channel для получения ID
+                if channel_info['type'] == 'username':
+                    req = self.youtube.channels().list(part="id", forUsername=channel_info['value'])
+                else: # search_query
+                    channel_id = await self._get_channel_id_by_search(channel_info['value'])
+                    # Если нашли через поиск, запрос ниже не нужен
+                
+                if not channel_id and channel_info['type'] == 'username':
+                    resp = req.execute()
+                    if resp.get('items'):
+                        channel_id = resp['items'][0]['id']
+            except Exception as e:
+                return {"error": f"Ошибка поиска канала: {e}"}
+
+        if not channel_id:
+            return {"error": "Канал не найден."}
+
+        # 2. Получаем ID плейлиста "Uploads"
+        uploads_id = await self._get_uploads_playlist_id(channel_id)
+        if not uploads_id:
+            return {"error": "Не удалось найти плейлист загрузок."}
+
+        # 3. Цикл по всем страницам (Pagination)
+        all_titles = []
+        next_page_token = None
+        
+        try:
+            while True:
+                request = self.youtube.playlistItems().list(
+                    part="snippet",
+                    playlistId=uploads_id,
+                    maxResults=50, # Максимум за 1 запрос
+                    pageToken=next_page_token
+                )
+                response = request.execute()
+                
+                items = response.get('items', [])
+                if not items:
+                    break
+
+                for item in items:
+                    title = item['snippet']['title']
+                    # Можно добавить дату или ссылку, если нужно:
+                    # video_id = item['snippet']['resourceId']['videoId']
+                    all_titles.append(title)
+
+                next_page_token = response.get('nextPageToken')
+                
+                # Если токена следующей страницы нет, значит мы дошли до конца
+                if not next_page_token:
+                    break
+                    
+                # Маленькая пауза, чтобы не заблокировать бота намертво при 10к видео
+                await asyncio.sleep(0.05)
+
+            return {
+                "channel_title": f"Channel_{channel_id}", # Или получить реальное имя отдельным запросом
+                "titles": all_titles
+            }
+
+        except Exception as e:
+            return {"error": f"Ошибка при сборе видео: {e}"}
